@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MS.ExcelData", "MS.ExcelData.csproj", "{28AB718A-71B2-4EEF-B191-3D4C38F8D989}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TextExcelData", "..\TextExcelData\TextExcelData.csproj", "{75BC231B-AC5B-4EFD-AD8D-89C4DCBC8C5A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{28AB718A-71B2-4EEF-B191-3D4C38F8D989}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{28AB718A-71B2-4EEF-B191-3D4C38F8D989}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{28AB718A-71B2-4EEF-B191-3D4C38F8D989}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75BC231B-AC5B-4EFD-AD8D-89C4DCBC8C5A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75BC231B-AC5B-4EFD-AD8D-89C4DCBC8C5A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75BC231B-AC5B-4EFD-AD8D-89C4DCBC8C5A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75BC231B-AC5B-4EFD-AD8D-89C4DCBC8C5A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

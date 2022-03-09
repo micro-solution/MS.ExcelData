@@ -1,15 +1,12 @@
 ﻿using System.Collections.Generic;
 
-using Excel = Microsoft.Office.Interop.Excel;
-
 namespace MS.ExcelData
 {
-    public interface IExcelTable<TModel>
+    public interface IBaseRepository<TModel>
     {
-        Excel.ListObject Table { get; set; }
-        IEnumerable<TModel> GetAll();
         void Save(TModel model);
         void Delete(TModel model);
+        IEnumerable<TModel> GetAll();
         TModel GetById(object keyValue);
         TModel GetByRowIndex(int index);
     }

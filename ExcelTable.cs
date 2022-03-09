@@ -1,4 +1,6 @@
-﻿using System;
+﻿using MS.ExcelData.Attributes;
+
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -6,57 +8,18 @@ using Excel = Microsoft.Office.Interop.Excel;
 
 namespace MS.ExcelData
 {
-    public abstract class ExcelTable<TModel> : IExcelTable<TModel>
+    public class ExcelTable<TModel> : IExcelTable<TModel>
         where TModel : class, new()
     {
+        private string _indexName;
+        private readonly Dictionary<string, Column> _columns;
+        private readonly Dictionary<string, PropertyInfo> _properties;
+        private readonly Excel.Application _xlsApp;
+
         /// <summary>
         /// Таблица Excel с данными
         /// </summary>
         public Excel.ListObject Table { get; set; }
-
-        /// <summary>
-        /// Лист на котором находится таблица с данными
-        /// </summary>
-        public Excel.Worksheet Worksheet { get; set; }
-
-        private PropertyInfo IndexProperty
-        {
-            get
-            {
-                foreach (PropertyInfo property in PropertyColumns)
-                {
-                    int inx = ((Column)property.GetValue(this)).Index;
-                    if (inx == 1) _indexProperty = property;
-                }
-                return _indexProperty;
-            }
-        }
-        private PropertyInfo _indexProperty;
-
-        /// <summary>
-        /// Свойства столбцов контекста данных
-        /// </summary>
-        private List<PropertyInfo> PropertyColumns
-        {
-            get
-            {
-                if (_propertyColumns == null)
-                {
-                    _propertyColumns = new List<PropertyInfo>();
-
-                    foreach (var item in GetType().GetProperties())
-                    {
-                        if (item.PropertyType.Name != nameof(Column)) continue;
-                        _propertyColumns.Add(item);
-                    }
-                }
-                return _propertyColumns;
-            }
-        }
-
-        private List<PropertyInfo> _propertyColumns;
-
-        private readonly Excel.Application _app;
 
         /// <summary>
         /// Создание нового объекта данных
@@ -64,33 +27,30 @@ namespace MS.ExcelData
         /// <param name="worksheet"></param>
         /// <param name="tableName"></param>
         /// <exception cref="IndexOutOfRangeException"></exception>
-        public ExcelTable(Excel.Worksheet worksheet, string tableName)
+        public ExcelTable(Excel.Workbook workbook) : this()
         {
-            Worksheet = worksheet;
+            _xlsApp = workbook.Application;
 
-            _app = Worksheet.Application;
-            try
-            {
-                Table = worksheet.ListObjects[tableName];
-            }
-            catch (Exception)
-            {
-                throw new IndexOutOfRangeException($"На листе {worksheet.Name} отсутствует таблица {tableName}"); ;
-            }
+            string tableName = GetTableName();
+            SetTable(workbook, tableName);
+            SetColumns();
         }
 
-        /// <summary>
-        /// Ожидание установки неинтерактивного режима
-        /// </summary>
-        private void SetNonInteractive()
+        public ExcelTable(Excel.Worksheet worksheet) : this()
         {
-            while (_app.Interactive)
+            _xlsApp = worksheet.Application;
+            string tableName = GetTableName();
+            SetTable(worksheet, tableName);
+            SetColumns();
+        }
+
+        private ExcelTable()
+        {
+            _columns = new Dictionary<string, Column>();
+            _properties = new Dictionary<string, PropertyInfo>();
+            foreach (var property in typeof(TModel).GetProperties())
             {
-                try
-                {
-                    _app.Interactive = false;
-                }
-                catch { }
+                _properties.Add(property.Name, property);
             }
         }
 
@@ -99,7 +59,7 @@ namespace MS.ExcelData
         /// </summary>
         /// <typeparam name="T">Тип объекта</typeparam>
         /// <param name="model">Экземпляр объекта</param>
-        public void Save(TModel model)
+        public virtual void Save(TModel model)
         {
             try
             {
@@ -107,11 +67,10 @@ namespace MS.ExcelData
                 int inx = FindRowIndexById(model);
                 if (inx == 0)
                 {
-                    Excel.Application app = Worksheet.Application;
-                    PropertyInfo property = GetProperyIndex(model);
+                    PropertyInfo property = GetIndexPropery(model);
                     if (property.PropertyType == typeof(int))
                     {
-                        property.SetValue(model, (int)app.WorksheetFunction.Max(Table.ListColumns[1].Range) + 1);
+                        property.SetValue(model, (int)_xlsApp.WorksheetFunction.Max(Table.ListColumns[1].Range) + 1);
                     }
 
                     Create(model);
@@ -127,7 +86,7 @@ namespace MS.ExcelData
             }
             finally
             {
-                _app.Interactive = true;
+                _xlsApp.Interactive = true;
             }
         }
 
@@ -151,17 +110,16 @@ namespace MS.ExcelData
             }
             finally
             {
-                _app.Interactive = true;
+                _xlsApp.Interactive = true;
             }
         }
-
 
         /// <summary>
         /// Получение списка с данными заданного типа
         /// </summary>
         /// <typeparam name="T"></typeparam>
         /// <returns></returns>
-        public List<TModel> GetAll()
+        public virtual IEnumerable<TModel> GetAll()
         {
             List<TModel> list = new List<TModel>();
             if (Table.DataBodyRange == null) return list;
@@ -175,26 +133,11 @@ namespace MS.ExcelData
                     dictionary.Add(j, data[i, j]);
                 }
 
-                TModel model = Set(dictionary);
+                TModel model = CreateModel(dictionary);
                 list.Add(model);
             }
 
             return list;
-        }
-
-        /// <summary>
-        /// Получает данные объекта из контекста
-        /// </summary>
-        /// <typeparam name="T">Тип данных</typeparam>
-        /// <param name="keyColumn">Столбец расположения ключа</param>
-        /// <param name="keyValue">Значение ключа</param>
-        /// <returns></returns>
-        public TModel GetByColumn(object keyValue, Column keyColumn)
-        {
-            int inx = FindRowIndexByValueInColumn(keyValue, keyColumn.Index);
-            if (inx == 0) return null;
-
-            return Set(GetDataFromRow(inx));
         }
 
         /// <summary>
@@ -203,12 +146,12 @@ namespace MS.ExcelData
         /// <typeparam name="T">Тип объекта</typeparam>
         /// <param name="keyValue">Идентификатор</param>
         /// <returns></returns>
-        public TModel GetById(object keyValue)
+        public virtual TModel GetById(object keyValue)
         {
             int inx = FindRowIndexByValueInColumn(keyValue, 1);
             if (inx == 0) return null;
 
-            return Set(GetDataFromRow(inx));
+            return CreateModel(GetDataFromRow(inx));
         }
 
         /// <summary>
@@ -217,15 +160,130 @@ namespace MS.ExcelData
         /// <typeparam name="T"></typeparam>
         /// <param name="index"></param>
         /// <returns></returns>
-        public TModel GetByRowIndex(int index)
+        public virtual TModel GetByRowIndex(int index)
         {
-            return Set(GetDataFromRow(index));
+            return CreateModel(GetDataFromRow(index));
+        }
+
+        /// <summary>
+        /// Получение имени таблицы из атрибута
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="ArgumentNullException"></exception>
+        private string GetTableName()
+        {
+            string tableName = string.Empty;
+            foreach (Attribute attr in typeof(TModel).GetCustomAttributes(false))
+            {
+                if (attr is TableNameAttribute ageAttribute)
+                {
+                    tableName = ageAttribute.Name;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(tableName)) throw new ArgumentNullException("Отсутствует атрибут, указывающий название таблицы");
+
+            return tableName;
+        }
+
+        /// <summary>
+        /// Установка таблицы
+        /// </summary>
+        /// <param name="worksheet">Имя листа в котором расположена таблица</param>
+        /// <param name="tableName">Имя таблицы</param>
+        /// <exception cref="IndexOutOfRangeException"></exception>
+        private void SetTable(Excel.Worksheet worksheet, string tableName)
+        {
+            try
+            {
+                Table = worksheet.ListObjects[tableName];
+            }
+            catch (Exception)
+            {
+                throw new IndexOutOfRangeException($"Отсутствует таблица {tableName}"); ;
+            }
+        }
+
+        /// <summary>
+        /// Установка таблицы
+        /// </summary>
+        /// <param name="workbook">Книга, в которой находится таблица</param>
+        /// <param name="tableName">Имя таблицы</param>
+        /// <exception cref="IndexOutOfRangeException"></exception>
+        private void SetTable(Excel.Workbook workbook, string tableName)
+        {
+            foreach (Excel.Worksheet worksheet in workbook.Worksheets)
+            {
+                foreach (Excel.ListObject item in worksheet.ListObjects)
+                {
+                    if (item.Name == tableName)
+                    {
+                        Table = item;
+                        return;
+                    }
+                }
+            }
+            throw new IndexOutOfRangeException($"Отсутствует таблица {tableName}"); ;
+        }
+
+        /// <summary>
+        /// Установка столбцов таблицы
+        /// </summary>
+        private void SetColumns()
+        {
+            foreach (var property in _properties)
+            {
+                Column column = new Column(Table);
+
+                foreach (Attribute attr in property.Value.GetCustomAttributes(false))
+                {
+                    if (attr is NameAttribute columnName)
+                    {
+                        column.SetByName(columnName.Name);
+                    }
+                    if (attr is IndexAttribute columnIndex)
+                    {
+                        column.SetByIndex(columnIndex.Index);
+                    }
+                    if (attr is IsReadOnlyAttribute)
+                    {
+                        column.IsReadOnly = true;
+                    }
+                    if (attr is IsIndexAttribute)
+                    {
+                        column.IsIndex = true;
+                    }
+                }
+
+                if (column.IsSetColumn)
+                {
+                    column.Type = property.Value.PropertyType;
+                    _columns.Add(property.Key, column);
+
+                    if (column.IsIndex) _indexName = property.Key;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ожидание установки неинтерактивного режима
+        /// </summary>
+        private void SetNonInteractive()
+        {
+            while (_xlsApp.Interactive)
+            {
+                try
+                {
+                    _xlsApp.Interactive = false;
+                }
+                catch { }
+            }
         }
 
         /// <summary>
         /// Создает новую строку в таблице и заполняет ее данными модели
         /// </summary>
-        /// <typeparam name="T">Тип объекта</typeparam>
         /// <param name="model">Модель</param>
         private void Create(TModel model)
         {
@@ -233,7 +291,6 @@ namespace MS.ExcelData
             try
             {
                 row = Table.ListRows.AddEx();
-
             }
             catch
             {
@@ -245,18 +302,29 @@ namespace MS.ExcelData
         /// <summary>
         /// Обновление данных в таблице
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="model"></param>
         private void Update(TModel model)
         {
             int inx = FindRowIndexById(model);
             UpdateRowTable(model, inx);
         }
+
+        /// <summary>
+        /// Обновление строки таблицы данными из модели
+        /// </summary>
+        /// <param name="model">модель данных</param>
+        /// <param name="rowIndex">номер строки таблицы</param>
         private void UpdateRowTable(TModel model, int rowIndex)
         {
             Excel.ListRow row = Table.ListRows[rowIndex];
             UpdateRowTable(model, row);
         }
+
+        /// <summary>
+        /// Обновление строки таблицы данными из модели
+        /// </summary>
+        /// <param name="model">модель данных</param>
+        /// <param name="row">строка таблицы Excel</param>
         private void UpdateRowTable(TModel model, Excel.ListRow row)
         {
             foreach (var item in GetDataFromModel(model))
@@ -269,37 +337,21 @@ namespace MS.ExcelData
         /// <summary>
         /// Заполнение объекта данными из словаря
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="data"></param>
         /// <returns></returns>
-        private TModel Set(Dictionary<int, object> data)
+        private TModel CreateModel(Dictionary<int, object> data)
         {
             TModel model = new TModel();
-            PropertyInfo[] modelProperties = model.GetType().GetProperties();
-
-            foreach (PropertyInfo property in PropertyColumns)
+            foreach (var column in _columns)
             {
-                foreach (PropertyInfo propertyModel in modelProperties)
+                try
                 {
-                    if (property.Name == propertyModel.Name)
-                    {
-                        int inx = ((Column)property.GetValue(this)).Index;
-
-                        Type type = propertyModel.PropertyType;
-
-                        if (propertyModel.SetMethod != null)
-                        {
-                            try
-                            {
-                                propertyModel.SetValue(model, ToType(type, data[inx]));
-                            }
-                            catch (Exception ex)
-                            {
-                                throw new ArgumentException($"Не удается записать {property.Name}\n {ex.Message}");
-                            }
-                        }
-                        break;
-                    }
+                    _properties[column.Key].SetValue(model, ToType(column.Value.Type, data[column.Value.Index]));
+                }
+                catch (Exception ex)
+                {
+                    throw new ArgumentException($"Не удается записать значение {data[column.Value.Index]} " +
+                        $"в столбец {column.Value.Name}\n {ex.Message}");
                 }
             }
             return model;
@@ -314,21 +366,11 @@ namespace MS.ExcelData
         private Dictionary<int, object> GetDataFromModel(TModel model)
         {
             Dictionary<int, object> data = new Dictionary<int, object>();
-            PropertyInfo[] modelProperties = model.GetType().GetProperties();
 
-            foreach (PropertyInfo property in PropertyColumns)
+            foreach (var item in _columns)
             {
-                if (property.SetMethod == null) continue;
-
-                foreach (PropertyInfo propertyModel in modelProperties)
-                {
-                    if (property.Name == propertyModel.Name)
-                    {
-                        int inx = ((Column)property.GetValue(this)).Index;
-                        data.Add(inx, propertyModel.GetValue(model));
-                        break;
-                    }
-                }
+                if (item.Value.IsReadOnly) continue;
+                data.Add(item.Value.Index, _properties[item.Key].GetValue(model));
             }
             return data;
         }
@@ -354,38 +396,32 @@ namespace MS.ExcelData
         /// <summary>
         /// Получает значение индексного свойства
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="model"></param>
         /// <returns></returns>
         private object GetIndexValue(TModel model)
         {
-            PropertyInfo property = GetProperyIndex(model);
+            var property = GetIndexPropery(model);
             return property.GetValue(model);
         }
+
         /// <summary>
         /// Определяет индексное свойство
         /// </summary>
-        /// <typeparam name="T"></typeparam>
         /// <param name="model"></param>
         /// <returns></returns>
         /// <exception cref="NullReferenceException"></exception>
-        private PropertyInfo GetProperyIndex(TModel model)
+        private PropertyInfo GetIndexPropery(TModel model)
         {
-            PropertyInfo[] modelProperties = model.GetType().GetProperties();
-            foreach (PropertyInfo propertyModel in modelProperties)
+            if (string.IsNullOrEmpty(_indexName) || !_properties.ContainsKey(_indexName))
             {
-                if (IndexProperty.Name == propertyModel.Name)
-                {
-                    return propertyModel;
-                }
+                throw new NullReferenceException("Отсутствует индексное свойство");
             }
-            throw new NullReferenceException("Отсутствует индексное свойство");
+            return _properties[_indexName];
         }
 
         /// <summary>
         /// Определяет индекс строки в которой расположены данные по индексному столбцу
         /// </summary>
-        /// <typeparam name="T">Тип данных</typeparam>
         /// <param name="model">Объект данных</param>
         /// <returns></returns>
         private int FindRowIndexById(TModel model)
@@ -403,22 +439,16 @@ namespace MS.ExcelData
         private int FindRowIndexByValueInColumn(object keyValue, int indexColumn)
         {
             Excel.Range column = Table.ListColumns[indexColumn].Range;
-
             try
             {
-                double res = _app.WorksheetFunction.Match(keyValue, column, 0) - 1;
+                double res = _xlsApp.WorksheetFunction.Match(keyValue, column, 0) - 1;
                 return (int)res;
             }
             catch
             {
                 return 0;
             }
-            //Excel.Range find = column.Find(keyValue, LookAt: Excel.XlLookAt.xlWhole);
-
-            //if (find == null) return 0;
-            //return find.Row - Table.HeaderRowRange.Row;
         }
-
 
         /// <summary>
         /// Преобразование данных в зависимости от типа

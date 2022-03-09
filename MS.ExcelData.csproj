@@ -41,8 +41,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Attributes\IndexAttribute.cs" />
+    <Compile Include="Attributes\IsIndexAttribute.cs" />
+    <Compile Include="Attributes\IsReadOnlyAttribute.cs" />
+    <Compile Include="Attributes\NameAttribute.cs" />
+    <Compile Include="Attributes\TableNameAttribute.cs" />
+    <Compile Include="BaseRepository.cs" />
     <Compile Include="Column.cs" />
     <Compile Include="ExcelTable.cs" />
+    <Compile Include="IBaseRepository.cs" />
     <Compile Include="IExcelTable.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -75,5 +82,6 @@
       <EmbedInteropTypes>True</EmbedInteropTypes>
     </COMReference>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
