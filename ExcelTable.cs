@@ -346,7 +346,17 @@ namespace MS.ExcelData
             {
                 try
                 {
-                    _properties[column.Key].SetValue(model, ToType(column.Value.Type, data[column.Value.Index]));
+                    Type type = column.Value.Type;
+
+                    if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    {
+                        type = type.GetGenericArguments()[0];
+                        _properties[column.Key].SetValue(model, ToTypeNullable(type, data[column.Value.Index]));
+                    }
+                    else
+                    {
+                        _properties[column.Key].SetValue(model, ToType(type, data[column.Value.Index]));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -438,16 +448,15 @@ namespace MS.ExcelData
         /// <returns></returns>
         private int FindRowIndexByValueInColumn(object keyValue, int indexColumn)
         {
-            Excel.Range column = Table.ListColumns[indexColumn].Range;
-            try
+            object[,] columnValue = Table.ListColumns[indexColumn].Range.Value2;
+
+            int res = 0;
+            foreach (var item in columnValue)
             {
-                double res = _xlsApp.WorksheetFunction.Match(keyValue, column, 0) - 1;
-                return (int)res;
+                if (item.Equals(keyValue)) return res;
+                res++;
             }
-            catch
-            {
-                return 0;
-            }
+            return 0;
         }
 
         /// <summary>
@@ -517,6 +526,20 @@ namespace MS.ExcelData
                 default:
                     throw new InvalidCastException("Conversion not supported."); ;
             }
+        }
+
+        /// <summary>
+        /// Преобразование данных в зависимости от типа
+        /// </summary>
+        /// <param name="type"></param>
+        /// <param name="value"></param>
+        /// <returns></returns>
+        /// <exception cref="NullReferenceException"></exception>
+        /// <exception cref="InvalidCastException"></exception>
+        private object ToTypeNullable(Type type, object value)
+        {
+            if (value == null) return null;
+            return ToType(type, value);
         }
     }
 

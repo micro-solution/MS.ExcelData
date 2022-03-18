@@ -4,7 +4,7 @@ namespace MS.ExcelData
 {
     public class BaseRepository<TModel> : IBaseRepository<TModel>
     {
-        public IExcelTable<TModel> TableContext;
+        public IExcelTable<TModel> TableContext { get; set; }
 
         public BaseRepository(IExcelTable<TModel> table)
         {
